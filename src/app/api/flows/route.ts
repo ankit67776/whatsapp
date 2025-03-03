@@ -70,6 +70,7 @@ export async function POST(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
     try {
         const { id } = await req.json();
+        console.log(`trying to delete ${id}`)
 
         const response = await fetch(
             `${WHATSAPP_API_URL}/${id}`,

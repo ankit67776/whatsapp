@@ -104,17 +104,40 @@ export async function POST(req: NextRequest) {
                         else if (interaction.type === "nfm_reply") {
                             try {
                                 const flowResponse = JSON.parse(interaction.nfm_reply.response_json);
-                                log(`${from} completed form submission`, '📋');
-                                channel.sendToQueue(
-                                    "whatsapp_incoming_queue",
-                                    Buffer.from(
-                                        JSON.stringify(flowResponse, (key, value) =>
-                                            key === "flow_token" && value === "unused" ? from : value
-                                        )
-                                    ),
-                                    { persistent: true }
-                                );
-                                console.log("Form data sent to RabbitMQ");
+                                const flowToken = flowResponse.flow_token === "unused" ? from : flowResponse.flow_token;
+
+                                let isDuplicate = false;
+                                let messages: any[] = [];
+
+                                await new Promise<void>((resolve) => {
+                                    channel.consume(
+                                        "whatsapp_incoming_queue",
+                                        (msg) => {
+                                            if (msg) {
+                                                const messageData = JSON.parse(msg.content.toString());
+                                                messages.push(messageData);
+                                            }
+                                        },
+                                        { noAck: false }
+                                    );
+                                    setTimeout(resolve, 1000);
+                                });
+
+                                isDuplicate = messages.some(msg => msg.flow_token === flowToken);
+
+                                if (!isDuplicate) {
+                                    log(`${from} completed form submission`, '📋');
+                                    channel.sendToQueue(
+                                        "whatsapp_incoming_queue",
+                                        Buffer.from(
+                                            JSON.stringify(flowResponse, (key, value) =>
+                                                key === "flow_token" && value === "unused" ? from : value
+                                            )
+                                        ),
+                                        { persistent: true }
+                                    );
+                                    console.log("Form data sent to RabbitMQ");
+                                }
 
                                 messageHistory.push({
                                     type: "flow_submission",
@@ -141,7 +164,7 @@ export async function POST(req: NextRequest) {
                         }
                     }
                 }
-                
+
             }
         }
         return new NextResponse("EVENT_RECEIVED", { status: 200 });

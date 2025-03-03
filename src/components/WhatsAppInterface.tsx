@@ -105,21 +105,34 @@ export default function SendMessagePage(): JSX.Element {
   const broadcastMessages = async () => {
     if (isBroadcasting) return;
     setIsBroadcasting(true);
-    // const numbers = await readExcel();
-    // const numbers = ["919370435262", "918745813705", "919719321451", "12012189440", "16464609200", "12012189436", "12162626123"]
-    // console.log(numbers)
+
     const limit = pLimit(10);
 
-    const requests = phoneNumbers.map((number) =>
-      limit(async () => {
-        const formData = new FormData();
-        formData.append("phone", number);
-        formData.append("message", message);
-        if (file) formData.append("file", file);
+    const requests = phoneNumbers.map((number) => {
+      const newMessage: Message = {
+        content: `Broadcast message to ${number}`,
+        isSent: true,
+        timestamp: new Date(),
+        status: 'sent',
+        file: null
+      };
+      setMessages(prev => [...prev, newMessage]);
 
-        return fetch("/api/send-message", { method: "POST", body: formData });
-      })
-    );
+      const formData = new FormData();
+      formData.append("phone", number);
+      formData.append("message", message);
+      if (file) formData.append("file", file);
+
+      return limit(async () => {
+        const response = await fetch("/api/send-message", { method: "POST", body: formData });
+
+        setMessages(prev => prev.map(msg =>
+          msg === newMessage ? { ...msg, status: response.ok ? 'delivered' : 'sent' } : msg
+        ));
+
+        return response;
+      });
+    });
 
     const results = await Promise.allSettled(requests);
 
@@ -137,7 +150,6 @@ export default function SendMessagePage(): JSX.Element {
     }
     setIsBroadcasting(false);
   };
-
 
   const sendInteractiveMessage = async () => {
     if (!phone) return;
@@ -160,6 +172,16 @@ export default function SendMessagePage(): JSX.Element {
   };
 
   const sendTemplateMessage = async () => {
+    if (!phone) return;
+
+    const newMessage: Message = {
+      content: `Registration Form`,
+      isSent: true,
+      timestamp: new Date(),
+      status: 'sent',
+      file: null
+    };
+    setMessages(prev => [...prev, newMessage]);
 
     const formData = new FormData();
     formData.append("phone", phone);
@@ -174,10 +196,23 @@ export default function SendMessagePage(): JSX.Element {
 
       const result = await response.json();
       console.log(`Response for ${phone}:`, result);
+
+      setMessages(prev => prev.map(msg =>
+        msg === newMessage ? { ...msg, status: response.ok ? 'delivered' : 'sent' } : msg
+      ));
+
+      setResponseMessage(response.ok ?
+        { success: true, message: `Template message sent to ${phone}` } :
+        { success: false, message: result.error || "Failed to send template message" }
+      );
+
     } catch (error) {
       console.error(`Error sending to ${phone}:`, error);
+      setResponseMessage({
+        success: false,
+        message: "Failed to connect to server"
+      });
     }
-
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
